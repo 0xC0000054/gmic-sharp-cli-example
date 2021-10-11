@@ -2,7 +2,7 @@
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <TargetFramework>netcoreapp3.1</TargetFramework>
+    <TargetFramework>net5</TargetFramework>
     <AssemblyName>gmic-sharp-cli</AssemblyName>
     <RootNamespace>GmicSharpCliExample</RootNamespace>
     <Copyright>Copyright © 2020 Nicholas Hayes</Copyright>
@@ -21,7 +21,7 @@
 
   <ItemGroup>
     <Reference Include="GmicSharp">
-      <HintPath>..\..\GmicSharp\src\bin\Release\netcoreapp3.1\GmicSharp.dll</HintPath>
+      <HintPath>..\..\GmicSharp\src\bin\Release\net5\GmicSharp.dll</HintPath>
     </Reference>
   </ItemGroup>
 
