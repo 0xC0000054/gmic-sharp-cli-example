@@ -107,72 +107,86 @@ namespace GmicSharpCliExample
             }
             else
             {
+                List<GdiPlusGmicBitmap> inputImages = null;
+
                 try
                 {
-                    using (Gmic<GdiPlusGmicBitmap> gmic = new Gmic<GdiPlusGmicBitmap>(new GdiPlusOutputImageFactory()))
+                    Gmic<GdiPlusGmicBitmap> gmic = new Gmic<GdiPlusGmicBitmap>(new GdiPlusOutputImageFactory());
+
+                    if (!string.IsNullOrEmpty(inputImagePath))
                     {
-                        if (!string.IsNullOrEmpty(inputImagePath))
+                        using (Bitmap bitmap = new Bitmap(inputImagePath))
                         {
-                            using (Bitmap bitmap = new Bitmap(inputImagePath))
-                            using (GdiPlusGmicBitmap gmicBitmap = new GdiPlusGmicBitmap(bitmap))
+                            inputImages = new List<GdiPlusGmicBitmap>(1)
                             {
-                                gmic.AddInputImage(gmicBitmap);
-                            }
+                                new GdiPlusGmicBitmap(bitmap) { Name = "Image 1" }
+                            };
                         }
+                    }
 
-                        string gmicCommands = BuildGmicCommandString(remaining);
+                    string gmicCommands = BuildGmicCommandString(remaining);
 
-                        using (CancellationTokenSource cts = new CancellationTokenSource())
+                    using (CancellationTokenSource cts = new CancellationTokenSource())
+                    {
+                        Console.CancelKeyPress += new ConsoleCancelEventHandler(delegate (object sender, ConsoleCancelEventArgs e)
                         {
-                            Console.CancelKeyPress += new ConsoleCancelEventHandler(delegate (object sender, ConsoleCancelEventArgs e)
+                            // Send a cancellation request to G'MIC, the process will exit after G'MIC finishes.
+                            cts.Cancel();
+                            e.Cancel = true;
+                        });
+
+                        Task<OutputImageCollection<GdiPlusGmicBitmap>> task = gmic.RunGmicAsync(gmicCommands, inputImages, cts.Token);
+
+                        // Using WaitAny allows any exception that occurred
+                        // during the task execution to be examined.
+                        Task.WaitAny(task);
+
+                        if (task.IsFaulted)
+                        {
+                            Exception exception = task.Exception.GetBaseException();
+
+                            Console.WriteLine("Error running G'MIC: " + exception.Message);
+                        }
+                        else if (!task.IsCanceled)
+                        {
+                            OutputImageCollection<GdiPlusGmicBitmap> outputImages = task.Result;
+
+                            if (outputImages.Count > 0)
                             {
-                                // Send a cancellation request to G'MIC, the process will exit after G'MIC finishes.
-                                cts.Cancel();
-                                e.Cancel = true;
-                            });
-
-                            Task<OutputImageCollection<GdiPlusGmicBitmap>> task = gmic.RunGmicTaskAsync(gmicCommands, cts.Token);
-
-                            // Using WaitAny allows any exception that occurred
-                            // during the task execution to be examined.
-                            Task.WaitAny(task);
-
-                            if (task.IsFaulted)
-                            {
-                                Exception exception = task.Exception.GetBaseException();
-
-                                Console.WriteLine("Error running G'MIC: " + exception.Message);
-                            }
-                            else if (!task.IsCanceled)
-                            {
-                                OutputImageCollection<GdiPlusGmicBitmap> outputImages = task.Result;
-
-                                if (outputImages.Count > 0)
+                                if (string.IsNullOrEmpty(outputFolderPath))
                                 {
-                                    if (string.IsNullOrEmpty(outputFolderPath))
-                                    {
-                                        // If the user does not specify a folder for the output images
-                                        // use a randomly named sub-folder in the application directory.
-                                        string appDirectory = Path.GetDirectoryName(typeof(Program).Assembly.Location);
-                                        outputFolderPath = Path.Combine(appDirectory, Path.GetRandomFileName());
+                                    // If the user does not specify a folder for the output images
+                                    // use a randomly named sub-folder in the application directory.
+                                    string appDirectory = Path.GetDirectoryName(typeof(Program).Assembly.Location);
+                                    outputFolderPath = Path.Combine(appDirectory, Path.GetRandomFileName());
 
-                                        Console.WriteLine("No output folder specified, using: {0}", outputFolderPath);
+                                    Console.WriteLine("No output folder specified, using: {0}", outputFolderPath);
+                                }
+
+                                DirectoryInfo directoryInfo = new DirectoryInfo(outputFolderPath);
+                                if (!directoryInfo.Exists)
+                                {
+                                    directoryInfo.Create();
+                                }
+
+                                for (int i = 0; i < outputImages.Count; i++)
+                                {
+                                    var image = outputImages[i];
+
+                                    string path;
+
+                                    if (string.IsNullOrWhiteSpace(image.Name))
+                                    {
+                                        path = Path.Combine(outputFolderPath, i.ToString(CultureInfo.CurrentCulture) + ".png");
+                                    }
+                                    else
+                                    {
+                                        path = Path.Combine(outputFolderPath, image.Name + ".png");
                                     }
 
-                                    DirectoryInfo directoryInfo = new DirectoryInfo(outputFolderPath);
-                                    if (!directoryInfo.Exists)
+                                    using (FileStream stream = new FileStream(path, FileMode.Create, FileAccess.Write))
                                     {
-                                        directoryInfo.Create();
-                                    }
-
-                                    for (int i = 0; i < outputImages.Count; i++)
-                                    {
-                                        string path = Path.Combine(outputFolderPath, i.ToString(CultureInfo.CurrentCulture) + ".png");
-
-                                        using (FileStream stream = new FileStream(path, FileMode.Create, FileAccess.Write))
-                                        {
-                                            outputImages[i].Image.Save(stream, ImageFormat.Png);
-                                        }
+                                        image.Image.Save(stream, ImageFormat.Png);
                                     }
                                 }
                             }
@@ -214,6 +228,16 @@ namespace GmicSharpCliExample
                 catch (UnauthorizedAccessException ex)
                 {
                     Console.WriteLine(ex.Message);
+                }
+                finally
+                {
+                    if (inputImages != null)
+                    {
+                        for (int i = 0; i < inputImages.Count; i++)
+                        {
+                            inputImages[i]?.Dispose();
+                        }
+                    }
                 }
             }
         }
